@@ -30,24 +30,11 @@ Buzzkill is a fly-swatting game inspired by the classic mini-game from Mario Pai
 - Implements image rotation for realistic fly movement
 - Collision detection using distance calculation
 
-## Setup Instructions
-1. Install Processing from [processing.org](https://processing.org/)
-2. Open the Buzzkill.pde file in Processing
-3. Ensure the following image files are in the "data" folder:
-   - fly.png
-   - flybye.png
-   - swatter.png
-   - swatted.png
-4. Run the sketch by clicking the play button in Processing
-
-## Debugging
-The game includes a debug mode that can be enabled by setting the `debug` variable to `true`. Debug mode shows:
-- Collision radius circles
-- Fly movement direction lines
-- Debug messages in the top-right corner
+## Information
+- This project was originally written in Java
+- However, due to the high likelihood that future editions of this project will have the same assignment criteria, I have decided to only publish the web version where I converted Java calls to Javascript calls and utilised the p5.js library (which is a web-based Processing environment)
 
 ## Credits
 - Developed by Kevin Teong
 - For COSC 101 - Software Development Studio 1
-- Student ID: 220295079
 - Inspired by the fly swatting game from Mario Paint on the Super Nintendo
