@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Buzzkill - Fly Swatting Game</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.6.0/p5.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #f0f0f0;
+            font-family: Arial, sans-serif;
+        }
+        
+        #game-container {
+            position: relative;
+        }
+        
+        canvas {
+            display: block;
+            border: 2px solid #333;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
+        }
+        
+        .game-info {
+            text-align: center;
+            margin-top: 20px;
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 5px;
+        }
+        
+        p {
+            color: #666;
+            margin-top: 0;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <div class="game-info">
+            <h1>Buzzkill</h1>
+            <p>Swat the flies before they escape!</p>
+        </div>
+        <div id="game-container"></div>
+    </div>
+
+    <script>
+        // The game code from paste.txt goes here
+        let fly, flybye, swatter, swatted;
+        let fX, fY; // fly locations array
+        let swat; // fly swatted binary boolean array, 1 = swatted, 0 = not swatted (also changed it from float[] to int[])
+        let score = 0; // increments when swatted.
+        let missedFlies = 0; // increments when fly is missed.
+        let swings = 0;
+        let directHit = 0; // increments when swatter is missed.
+        let level = 0;
+        let levelTime = 20 * 60; // time in seconds for each level
+        let lives = 1; // number of lives, gain 1 every time we call resetLevel()
+        let maximumFliesMissed = 3; // maximum flies missed before game over
+        let gamePaused = true; // game paused flag
+        let gameOver = false; // game over flag
+        let flyOpacity;
+        let flySpeed;
+        let flyDirection;
+        let debug = false; // debug mode - set to false to hide debug messages and collision circles
+        // New variables for global settings in the game
+        let collisionRadius = 25; // If mouse is within 5 pixels of the fly, it is considered a hit
+        let debugMessage = "Debug text";
+        let scoreTextSize = 20; // Text size for the score
+        let textX = 20; // X position for the score text
+        let textY = 20; // Y position for the score text
+        
+        function setup() {
+            let canvas = createCanvas(800, 400);
+            canvas.parent('game-container');
+            resetLevel(false); // reset fly arrays
+            frameRate(60); // Set the variables for the fly and swatter images
+            imageMode(CENTER); // Center image draw (works best for rotations)
+        }
+        
+        function preload() {
+            fly = loadImage("fly.png");
+            flybye = loadImage("flybye.png");
+            swatter = loadImage("swatter.png");
+            swatted = loadImage("swatted.png");
+        }
+        
+        /*************************************************************************************************
+         * Helper functions
+         * These functions are used to generate random numbers for fly positiosn and calculate distances
+         * between points.
+         *************************************************************************************************/
+        function randomFlyX() {
+            // random x location for fly
+            return int(random(fly.width, width - fly.width)); // random x location based on fly width
+        }
+        
+        function randomFlyY() {
+            // random y location for fly
+            return int(random(fly.height, height - fly.height)); // random y location based on fly height
+        }
+        
+        function distance(x1, y1, x2, y2) {
+            // distance between two points
+            return sqrt(sq(x2 - x1) + sq(y2 - y1)); // Pythagorean theorem (thanks year 8 maths)
+        }
+        
+        /*************************************************************************************************
+         * populate() - draw the flies in memory to the screen and control their direction/movement.
+         * This function is called every frame to update the position of the flies and draw them to the screen.
+         *************************************************************************************************/
+        function populate() {
+            // draw the flies in memory to the screen.
+            for (let i = 0; i < fX.length; i++) {
+                //If fly escaped, skip
+                if (swat[i] == -1) {
+                    continue; // skip to next fly
+                }
+                if (swat[i] == 1) {
+                    // if swatted
+                    if (flyOpacity[i] > 0) {
+                        flyOpacity[i] -= 5;
+                    } else {
+                        flyOpacity[i] = 0;
+                    }
+                    tint(255, flyOpacity[i]); // set opacity of fly image
+                    //Also make the fly fall down once swatted but make the splat stay there for a brief period
+                    let yMod = max(0, 128 - flyOpacity[i]);
+                    image(flybye, fX[i], fY[i] + yMod, fly.width, fly.height);
+                    noTint(); // reset tint to default
+                } else {
+                    //Check if fly is out of bounds
+                    let margins = 35;
+                    if (
+                        fX[i] < -margins ||
+                        fX[i] > width + margins ||
+                        fY[i] < -margins ||
+                        fY[i] > height + margins
+                    ) {
+                        missedFlies++;
+                        lives -= 1;
+                        swat[i] = -1; // fly escaped
+                        checkGameOver(false); // check if game is over
+                    } else {
+                        //Fly hasn't escaped
+                        //Get next position of fly (if its not swatted and still within the game zone)
+                        if (swat[i] == 0) {
+                            // if not swatted
+                            fX[i] += flySpeed[i] * cos(radians(flyDirection[i])); // update x position based on speed and direction
+                            fY[i] += flySpeed[i] * sin(radians(flyDirection[i])); // update y position based on speed and direction
+                            //Modify the direction of the fly using a noise function that I learnt about in assignemnt 1
+                            // This will make the fly move in a more natural way rather than a straight line
+                            flyDirection[i] += noise(fX[i] * 0.01, fY[i] * 0.01) * 3;
+                            if (debug) {
+                                // Draw a line to show the direction of the fly (debuf only)
+                                stroke(0, 100); // draw line to show direction of fly
+                                line(
+                                    fX[i],
+                                    fY[i],
+                                    fX[i] +
+                                        flySpeed[i] *
+                                            50 *
+                                            cos(radians(flyDirection[i])),
+                                    fY[i] +
+                                        flySpeed[i] * 50 * sin(radians(flyDirection[i]))
+                                );
+                                noStroke(); // reset stroke to default
+                            }
+                        } // resize the fly image and place based on fx/fy array values
+                        // In my assignment, we are setting the x, y as the centre of the fly image
+                        // Time to try this rotating image stuff that was covered in the lectures
+                        push();
+                        translate(fX[i], fY[i]); // Rotate around that point; Ideally the image is a fly facing rightwards
+                        // but the provided image has the fly pointing north west
+                        rotate(radians(flyDirection[i] + 160));
+                        image(fly, 0, 0, fly.width, fly.height); // Draw at center
+                        pop(); // Draw debug circle too
+                        if (debug) {
+                            fill(255, 0, 0, 100);
+                            ellipse(
+                                fX[i],
+                                fY[i],
+                                collisionRadius * 2,
+                                collisionRadius * 2
+                            );
+                        }
+                    }
+                }
+            }
+        }
+        
+        /*************************************************************************************************
+         * drawSwatter() - draw the swatter image to the screen and swap images when pressed.
+         * This function is called every frame to update the position of the swatter and draw it to the screen.
+         *************************************************************************************************/
+        function drawSwatter() {
+            if (mouseIsPressed) {
+                // image swap
+                //draw swatter image to around mouse location - might want to play with this to get it to look right.
+                //In this assignement, the swatter net centre is set at the mouse location
+                image(
+                    swatter,
+                    mouseX,
+                    mouseY + swatter.height / 3,
+                    swatter.width,
+                    swatter.height
+                ); // swatter image
+            } else {
+                // if not pressed then alternative image.
+                image(
+                    swatted,
+                    mouseX,
+                    mouseY + swatter.height / 3,
+                    swatter.width,
+                    swatter.height
+                ); // swatted image
+            }
+        }
+        
+        /*************************************************************************************************
+         * newFly() - create a new fly and set its properties.
+         * This function is called when a new fly is spawned.
+         * It sets the properties of the fly such as its position, speed, direction and opacity.
+         *************************************************************************************************/
+        function newFly() {
+            fX = append(fX, randomFlyX());
+            fY = append(fY, randomFlyY());
+            swat = append(swat, 0);
+            flyOpacity = append(flyOpacity, 255);
+            flySpeed = append(flySpeed, int(random(3, 5 + level))); // random speed between 3 and 5  + level
+            // Direction of fly will be set to +/-20 degrees to the further corner of the window
+            // First calculate the furthest corner of the window
+            let cornerX = fX[fX.length - 1] < width / 2 ? width : 0; // if fly is on left side of screen, set corner to right side of screen
+            let cornerY = fY[fY.length - 1] < height / 2 ? height : 0; // if fly is on top side of screen, set corner to bottom side of screen
+            let angle = atan2(cornerY - fY[fY.length - 1], cornerX - fX[fX.length - 1]); // angle to corner of screen
+            let direction = random(-PI / 9, PI / 9); // random direction between -20 and 20 degrees
+            flyDirection = append(flyDirection, int(degrees(angle + direction))); // random direction between -20 and 20 degrees
+            console.log(
+                "New fly spawned at: " + fX[fX.length - 1] + ", " + fY[fY.length - 1],
+                " with speed of: ",
+                flySpeed[flySpeed.length - 1]
+            );
+        }
+        
+        /*************************************************************************************************
+         * mousePressed() - mouse click event handler.
+         * This function is called when the mouse is pressed.
+         * It checks if the game is paused or over and calls the collision detection function.
+         *************************************************************************************************/
+        function mousePressed() {
+            // mouse click event
+            if (!gamePaused && !gameOver) {
+                // if game is not paused or over
+                collisionDetect();
+            } else if (gamePaused && !gameOver) {
+                // if game is paused
+                gamePaused = false; // unpause game
+                resetLevel(true);
+            }
+            return false; // Prevent default browser behavior
+        }
+        
+        /*************************************************************************************************
+         * resetLevel() - reset the game level and properties.
+         * This function is called when the game is reset or a new level is started.
+         * It resets the fly arrays, level time and lives.
+         * Arguments:
+         *   addLevel - boolean to determine if the level should be incremented or not.
+         *************************************************************************************************/
+        function resetLevel(addLevel) {
+            // Reset fly arrays
+            if (addLevel) {
+                // if addLevel is true
+                level++; // increment level
+            } else {
+                level = 0;
+            }
+            levelTime = 20 * 60 + 1; // reset level time to 20 seconds
+            fX = new Array(0); // reset fly locations array
+            fY = new Array(0); // reset fly locations array
+            swat = new Array(0); // reset fly swatted array
+            flyOpacity = new Array(0); // reset fly opacity array
+            flySpeed = new Array(0); // reset fly speed array
+            flyDirection = new Array(0); // reset fly direction array
+            lives += 1; // Give player extra life
+            lives = constrain(lives, 0, 5); // constrain lives to maximum of 5
+        }
+        
+        /*************************************************************************************************
+         * timer() - countdown timer for the level.
+         * This function is called every frame to update the level time and spawn new flies.
+         * It spawns a new fly every 2 seconds and increases the spawn rate as the level increases.
+         *************************************************************************************************/
+        function timer() {
+            if (levelTime > 0) {
+                levelTime--;
+            } else {
+                checkRoundOver();
+            } // Spawn a fly every 2 seconds
+            // More spawns as level increases
+            if (levelTime % (120 - level * 2) == 0 && levelTime > 0) {
+                newFly();
+            }
+        }
+        
+        /*************************************************************************************************
+         * collisionDetect() - collision detection for the swatter and flies.
+         * This function is called when the mouse is pressed.
+         * It checks if the mouse is within the collision radius of a fly and swats it if it is.
+         * It also increments the score and missed flies if the fly is not swatted.
+         *************************************************************************************************/
+        function collisionDetect() {
+            swings++;
+            debugMessage =
+                "Collision detection running...\nSwat array size: " +
+                str(swat.length) +
+                "\n";
+            for (let i = 0; i < swat.length; i++) {
+                // condition should look at location of mouse and individual coordinates in fX and fY
+                // Hmm need to make a distance from point to point function to make this easier
+                if (
+                    distance(mouseX, mouseY, fX[i], fY[i]) < collisionRadius &&
+                    swat[i] == 0
+                ) {
+                    swat[i] = 1; // swatted
+                    //newFly(); // spawn new fly
+                    score++;
+                    debugMessage +=
+                        "Fly " +
+                        i +
+                        " swatted! Collision distance of " +
+                        distance(mouseX, mouseY, fX[i], fY[i]) +
+                        "\n";
+                    directHit++;
+                    break;
+                } else if (swat[i] == 0) {
+                    // if not swatted
+                    debugMessage +=
+                        "Fly " +
+                        i +
+                        " not swatted. Collision distance of " +
+                        distance(mouseX, mouseY, fX[i], fY[i]) +
+                        "\n";
+                }
+            }
+        }
+        
+        /*************************************************************************************************
+         * checkRoundOver() - check if the round is over.
+         * This function is called every frame to check if all flies have been swatted or escaped.
+         * It also checks if the level time is 0 and pauses the game if it is.
+         *************************************************************************************************/
+        function checkRoundOver() {
+            // Check if all flies have been swatted or escaped and level time is 0
+            let allFliesSwattedorEscaped = true; // assume all flies are swatted
+            for (let i = 0; i < swat.length; i++) {
+                if (swat[i] == 0) {
+                    // if fly is not swatted
+                    allFliesSwattedorEscaped = false; // set flag to false
+                    break; // exit loop
+                }
+            }
+            if (allFliesSwattedorEscaped == true && levelTime <= 0) {
+                // if all flies are swatted and time is up
+                gamePaused = true; // pause game
+                checkGameOver(true);
+            }
+        }
+        
+        /*************************************************************************************************
+         * checkGameOver() - check if the game is over.
+         * This function is called every frame to check if the player has lost all their lives.
+         * It also checks if the level is over and pauses the game if it is.
+         *************************************************************************************************/
+        function checkGameOver(levelOver) {
+            if (lives <= 0) {
+                gameOver = true; // game over
+            } else if (levelOver) {
+                gamePaused = true; // pause game
+            }
+        }
+        
+        /*************************************************************************************************
+         * draw() - main draw function.
+         * This function is called every frame to update the screen and draw the game elements.
+         * It draws the flies, swatter, score and timer to the screen.
+         * It also checks if the game is over and displays the game over message.
+         *************************************************************************************************/
+        function draw() {
+            background(255);
+            if (!gamePaused) {
+                populate(); // draw flys to screen.
+            }
+            fill(0);
+            drawSwatter(); // draw swatter to screen.
+            // Draw text
+            textSize(scoreTextSize); // Set the text size
+            fill(0); // Set the text color to black
+            if (debug) {
+                textAlign(RIGHT); // Align the text to the right
+                text("Debug: " + debugMessage, width - textX, textY); // Draw the debug text below the score
+            }
+            textAlign(LEFT); // Align the text to the right
+            let scoreMsg =
+                "Level: " +
+                level +
+                "\nScore: " +
+                score +
+                "\nLives: " +
+                lives +
+                "/5\nTotal missed Flies: " +
+                missedFlies;
+            if (swings > 0) {
+                scoreMsg +=
+                    "\nAccuracy: " +
+                    (100 - round(((swings - directHit) * 100) / swings)) +
+                    "%"; // Avoid divide by zero error
+            }
+            text(scoreMsg, textX, textY); // Draw the score at the specified position
+            text(round(levelTime / 60), width / 2, textY); // Draw the timer at the specified position
+            if (gameOver) {
+                textAlign(CENTER); // Align the text to the center
+                text(
+                    "Game Over! Final Score: " + score + "\nLevel reached: " + level,
+                    width / 2,
+                    height / 2
+                );
+            } else if (!gamePaused) {
+                timer(); // run the timer function
+            } else if (level == 0) {
+                textAlign(CENTER); // Align the text to the center
+                textSize(40); // Set the text size
+                fill(0); // Set the text color to black
+                text("Click to start the game!", width / 2, height / 2);
+            } else if (level >= 1) {
+                textAlign(CENTER); // Align the text to the center
+                textSize(40); // Set the text size
+                fill(0); // Set the text color to black
+                text(
+                    "Level " + level + " complete! Click to continue!",
+                    width / 2,
+                    height / 2
+                );
+            }
+        }
+    </script>
+</body>
+</html>
