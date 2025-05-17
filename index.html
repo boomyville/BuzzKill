@@ -15,21 +15,35 @@
             height: 100vh;
             background-color: #f0f0f0;
             font-family: Arial, sans-serif;
+            overflow: hidden;
         }
         
         #game-container {
             position: relative;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
         }
         
         canvas {
             display: block;
             border: 2px solid #333;
             box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
         }
         
         .game-info {
             text-align: center;
             margin-top: 20px;
+            position: absolute;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1;
         }
         
         h1 {
@@ -40,6 +54,13 @@
         p {
             color: #666;
             margin-top: 0;
+        }
+
+        @media (max-aspect-ratio: 1/1) {
+            .game-info {
+                position: relative;
+                margin-bottom: 10px;
+            }
         }
     </style>
 </head>
@@ -77,13 +98,18 @@
         let scoreTextSize = 20; // Text size for the score
         let textX = 20; // X position for the score text
         let textY = 20; // Y position for the score text
+        let canvas;
+        let gameWidth = 800;
+        let gameHeight = 400;
+        let scaleFactor = 1;
         
         function setup() {
-            let canvas = createCanvas(800, 400);
+            canvas = createCanvas(gameWidth, gameHeight);
             canvas.parent('game-container');
             resetLevel(false); // reset fly arrays
             frameRate(60); // Set the variables for the fly and swatter images
             imageMode(CENTER); // Center image draw (works best for rotations)
+            windowResized(); // Initial scaling
         }
         
         function preload() {
@@ -406,7 +432,7 @@
             fill(0); // Set the text color to black
             if (debug) {
                 textAlign(RIGHT); // Align the text to the right
-                text("Debug: " + debugMessage, width - textX, textY); // Draw the debug text below the score
+                text("Debug: " + debugMessage, width - textX * scaleFactor, textY * scaleFactor); // Draw the debug text below the score
             }
             textAlign(LEFT); // Align the text to the right
             let scoreMsg =
@@ -424,8 +450,8 @@
                     (100 - round(((swings - directHit) * 100) / swings)) +
                     "%"; // Avoid divide by zero error
             }
-            text(scoreMsg, textX, textY); // Draw the score at the specified position
-            text(round(levelTime / 60), width / 2, textY); // Draw the timer at the specified position
+            text(scoreMsg, textX * scaleFactor, textY * scaleFactor); // Draw the score at the specified position
+            text(round(levelTime / 60), width / 2, textY * scaleFactor); // Draw the timer at the specified position
             if (gameOver) {
                 textAlign(CENTER); // Align the text to the center
                 text(
@@ -437,12 +463,12 @@
                 timer(); // run the timer function
             } else if (level == 0) {
                 textAlign(CENTER); // Align the text to the center
-                textSize(40); // Set the text size
+                textSize(40 * scaleFactor); // Set the text size
                 fill(0); // Set the text color to black
                 text("Click to start the game!", width / 2, height / 2);
             } else if (level >= 1) {
                 textAlign(CENTER); // Align the text to the center
-                textSize(40); // Set the text size
+                textSize(40 * scaleFactor); // Set the text size
                 fill(0); // Set the text color to black
                 text(
                     "Level " + level + " complete! Click to continue!",
@@ -450,6 +476,23 @@
                     height / 2
                 );
             }
+        }
+
+        function windowResized() {
+            const container = document.getElementById('game-container');
+            const containerWidth = container.clientWidth;
+            const containerHeight = container.clientHeight;
+            
+            // Calculate scale factor based on container size
+            const scaleX = containerWidth / gameWidth;
+            const scaleY = containerHeight / gameHeight;
+            scaleFactor = min(scaleX, scaleY) * 0.9; // 90% of the maximum possible scale
+            
+            // Resize canvas
+            resizeCanvas(gameWidth * scaleFactor, gameHeight * scaleFactor);
+            
+            // Update text sizes based on scale
+            scoreTextSize = 20 * scaleFactor;
         }
     </script>
 </body>
